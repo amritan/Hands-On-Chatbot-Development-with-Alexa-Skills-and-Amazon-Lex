@@ -43,7 +43,7 @@ const handleProductFind = event => {
         let slotToElicit = 'colour';
         return Lex.elicitSlot({ message, intentName, slotToElicit, slots })
     }
-    if (!length && type === 'trousers¡') {
+    if (!length && type === 'trousers') {
         let message = 'Are you looking for short, standard or long trousers?';
         let intentName = 'productFind';
         let slotToElicit = 'length';

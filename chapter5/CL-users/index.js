@@ -1,7 +1,7 @@
 const AWS = require('aws-sdk');
 const s3 = new AWS.S3();
 
-exports.handler = event => {
+exports.handler = async event => {
 
     console.log(event);
     let intentName = event.currentIntent.name;
