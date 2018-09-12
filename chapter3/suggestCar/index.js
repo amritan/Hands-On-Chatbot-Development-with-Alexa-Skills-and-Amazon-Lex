@@ -1,4 +1,4 @@
-const Alexa = require('alexa-sdk');
+const Alexa = require('ask-sdk');
 const AWS = require('aws-sdk');
 const s3 = new AWS.S3();
 
@@ -17,53 +17,81 @@ const cars = [
     { name: 'Vauxhall Insignia', size: 'large', cost: 'luxury', doors: 5, gears: 'manual' }
 ];
 
-
-const handlers = {
-    'LaunchRequest': function() {
-        this.emit(':ask', `Hi there, I'm Car Helper. You can ask me to suggest a car for you.`);
+const LaunchRequestHandler = {
+    canHandle(handlerInput) {
+        return handlerInput.requestEnvelope.request.type === 'LaunchRequest';
     },
+    handle(handlerInput) {
+        const speechText = `Hi there, I'm Car Helper. You can ask me to suggest a car for you.`;
 
-    'whichCar': function() {
-        const { slots } = this.event.request.intent;
+        return handlerInput.responseBuilder
+            .speak(speechText)
+            .reprompt(speechText)
+            .getResponse();
+    }
+};
 
+const WhichCarHandler = {
+    canHandle(handlerInput) {
+        return handlerInput.requestEnvelope.request.type === 'IntentRequest' &&
+            handlerInput.requestEnvelope.request.intent.name === 'whichCar';
+    },
+    async handle(handlerInput) {
+        const slots = handlerInput.requestEnvelope.request.intent.slots;
         const { size, cost, gears, doors } = slots;
 
-        if (!size || !(size === 'large' || size === 'medium' || size == 'small')) {
+        if (!size || !(size.value === 'large' || size.value === 'medium' || size.value == 'small')) {
             const slotToElicit = 'size';
             const speechOutput = 'What size car do you want? Please say either small, medium or large.';
-            const repromptSpeech = 'What size car do you want?';
-            return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech);
+            return handlerInput.responseBuilder
+                .speak(speechOutput)
+                .addElicitSlotDirective(slotToElicit)
+                .getResponse();
         }
 
-        if (!cost || !(cost === 'luxury' || cost === 'value')) {
+        if (!cost || !(cost.value === 'luxury' || cost.value === 'value')) {
             const slotToElicit = 'cost';
             const speechOutput = 'Are you looking for a luxury or value car?';
-            return this.emit(':elicitSlot', slotToElicit, speechOutput);
+            return handlerInput.responseBuilder
+                .speak(speechOutput)
+                .addElicitSlotDirective(slotToElicit)
+                .getResponse();
         }
 
-        if (size === 'large' && (!gears || !(gears === 'automatic' || gears === 'manual'))) {
+        if (size.value === 'large' && (!gears || !(gears.value === 'automatic' || gears.value === 'manual'))) {
             // missing or incorrect gears
             const slotToElicit = 'gears';
             const speechOutput = 'Do you want an automatic or a manual transmission?';
-            return this.emit(':elicitSlot', slotToElicit, speechOutput);
+            return handlerInput.responseBuilder
+                .speak(speechOutput)
+                .addElicitSlotDirective(slotToElicit)
+                .getResponse();
         }
 
-        if (size === 'small' && (!doors || !(doors == 3 || doors == 5))) {
+        if (size.value === 'small' && (!doors || !(doors.value == 3 || doors.value == 5))) {
             // missing or incorrect doors
             const slotToElicit = 'doors';
             const speechOutput = 'Do you want 3 or 5 doors?';
-            return this.emit(':elicitSlot', slotToElicit, speechOutput);
+            return handlerInput.responseBuilder
+                .speak(speechOutput)
+                .addElicitSlotDirective(slotToElicit)
+                .getResponse();
         }
 
         // find the ideal car
+
         let chosenCar = cars.filter(car => {
-            return (car.size === size && car.cost === cost &&
-                (gears ? car.gears === gears : true) &&
-                (doors ? car.doors === doors : true));
+            return (car.size === size.value && car.cost === cost.value &&
+                ((gears && gears.value) ? car.gears === gears.value : true) &&
+                ((doors && doors.value) ? car.doors == doors.value : true));
         });
+        console.log('chosenCar', chosenCar);
 
         if (chosenCar.length !== 1) {
-            return this.emit(':tell', `Unfortunately I couldn't find the best car for you. You can say "suggest a car" if you want to try again.`);
+            const speechOutput = `Unfortunately I couldn't find the best car for you. You can say "suggest a car" if you want to try again.`;
+            return handlerInput.responseBuilder
+                .speak(speechOutput)
+                .getResponse();
         }
 
         var params = {
@@ -71,37 +99,42 @@ const handlers = {
             Key: `${chosenCar[0].name}.json`
         };
 
-        return s3.getObject(params, function(err, data) {
-            if (err) { // an error occurred
-                console.log(err, err.stack);
-                return handleS3Error(err);
-            } else { // successful response
-                console.log(data);
-                return handleS3Data(data);
-            }
-        });
-
+        return new Promise((resolve, reject) => {
+            s3.getObject(params, function(err, data) {
+                if (err) { // an error occurred
+                    console.log(err, err.stack);
+                    reject(handleS3Error(handlerInput));
+                } else { // successful response
+                    console.log(data);
+                    resolve(handleS3Data(handlerInput, data));
+                }
+            });
+        })
     }
-
 };
 
-const handleS3Error = error => {
-    return this.emit(':tell', `Unfortunately I couldn't find the best car for you. You can say "suggest a car" if you want to try again.`);
+const handleS3Error = handlerInput => {
+    const speechOutput = `I've had a problem finding the perfect car for you.`
+    return handlerInput.responseBuilder
+        .speak(speechOutput)
+        .getResponse();
 };
 
 
-function handleS3Data(data) {
-    let body = JSON.parse(data.Body);
-    console.log('body= ', body);
-    let { make, model, rrp, fuelEcon, dimensions, NCAPSafetyRating, cargo } = body;
-    let speech = `I think that a ${make} ${model} would be a good car for you. 
+function handleS3Data(handlerInput, data) {
+    console.log('body= ', JSON.parse(data.Body.toString()));
+    let { make, model, rrp, fuelEcon, dimensions, NCAPSafetyRating, cargo } = JSON.parse(data.Body.toString());
+    let speechOutput = `I think that a ${make} ${model} would be a good car for you. 
     They're available from ${rrp} pounds, get ${fuelEcon} and have a ${cargo} litre boot.`;
-    return this.emit(':tell', speech);
+    console.log(speechOutput);
+    return handlerInput.responseBuilder
+        .speak(speechOutput)
+        .getResponse();
 }
 
-exports.handler = function(event, context, callback) {
-    const alexa = Alexa.handler(event, context, callback);
-    alexa.appId = 'amzn1.ask.skill.503149e3-1591-4c91-9ff2-ba5bc5d1df2d';
-    alexa.registerHandlers(handlers);
-    alexa.execute();
-};
+exports.handler = Alexa.SkillBuilders.custom()
+    .addRequestHandlers(
+        LaunchRequestHandler,
+        WhichCarHandler
+    )
+    .lambda();

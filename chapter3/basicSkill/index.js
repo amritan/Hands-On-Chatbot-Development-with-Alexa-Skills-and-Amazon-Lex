@@ -1,15 +1,20 @@
-const Alexa = require('alexa-sdk');
+const Alexa = require('ask-sdk-core');
 
-const handlers = {
-    'hello': function() {
-        //emit response directly
-        this.emit(':tell', `Hello from Sam's new intent!`);
+const helloHandler = {
+    canHandle(handlerInput) {
+        return handlerInput.requestEnvelope.request.type === 'IntentRequest' &&
+            handlerInput.requestEnvelope.request.intent.name === 'hello';
+    },
+    handle(handlerInput) {
+        const speechText = `Hello from Sam's new intent 3!`;
+
+        return handlerInput.responseBuilder
+            .speak(speechText)
+            .getResponse();
     }
 };
 
-exports.handler = function(event, context, callback) {
-    const alexa = Alexa.handler(event, context, callback);
-    alexa.appId = APP_ID
-    alexa.registerHandlers(handlers);
-    alexa.execute();
-};
+exports.handler = Alexa.SkillBuilders.custom()
+    .addRequestHandlers(
+        helloHandler)
+    .lambda();

@@ -1,16 +1,38 @@
-const Alexa = require('alexa-sdk');
+const Alexa = require('ask-sdk');
 
-let welcomeMessage = ''
+const LaunchRequestHandler = {
+    canHandle(handlerInput) {
+        return handlerInput.requestEnvelope.request.type === 'LaunchRequest';
+    },
+    handle(handlerInput) {
+        const speechText = ``;
 
-const handlers = {
-    'LaunchRequest': function() {
-        this.emit(':ask', welcomeMessage);
+        return handlerInput.responseBuilder
+            .speak(speechText)
+            .reprompt(speechText)
+            .getResponse();
+    }
+};
+
+const ErrorHandler = {
+    canHandle() {
+        return true;
+    },
+    handle(handlerInput, error) {
+        console.log(`Error handled: ${error.message}`);
+
+        return handlerInput.responseBuilder
+            .speak(`Sorry, I can't understand the command. Please say again.`)
+            .reprompt(`Sorry, I can't understand the command. Please say again.`)
+            .getResponse();
     },
 };
 
-exports.handler = function(event, context, callback) {
-    const alexa = Alexa.handler(event, context, callback);
-    alexa.appId = APP_ID
-    alexa.registerHandlers(handlers);
-    alexa.execute();
-};
+
+
+exports.handler = Alexa.SkillBuilders.custom()
+    .addRequestHandlers(
+        LaunchRequestHandler
+    )
+    .addErrorHandler(ErrorHandler)
+    .lambda();

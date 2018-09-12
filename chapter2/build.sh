@@ -37,15 +37,15 @@ rm archive.zip;
 echo "creating a new zip file"
 zip archive.zip *  -r -x .git/\* \*.sh tests/\* node_modules/aws-sdk/\* \*.zip
 
-echo "Uploading $lambda to $region";
-aws lambda create-function --function-name $lambda --runtime nodejs8.10 --role arn:aws:iam::095363550084:role/service-role/Dynamo --handler index.handler --zip-file fileb://archive.zip --publish
+echo "Uploading $lambda";
+aws lambda create-function --function-name $lambda --role arn:aws:iam::095363550084:role/lambdaBasic --runtime nodejs8.10 --handler index.handler --zip-file fileb://archive.zip --publish --profile samwcoding
 
 if [ $? -eq 0 ]; then 
     echo "!! Create successful !!"
     exit 1;
 fi
 
-aws lambda update-function-code --function-name $lambda --zip-file fileb://archive.zip --publish
+aws lambda update-function-code --function-name $lambda --zip-file fileb://archive.zip --publish --profile samwcoding
 
 if [ $? -eq 0 ]; then
     echo "!! Update successful !!"

@@ -1,33 +1,81 @@
-const Alexa = require('alexa-sdk');
 const axios = require('axios');
 const moment = require('moment');
-let jokes = [
-    `Where do snowmen keep their money? <break time="3s"> In a <emphasis level="strong"> snow bank </emphasis>.`,
-    `As we waited for a bus in the frosty weather, the woman next to me mentioned that she makes a lot of mistakes when texting in the cold. I nodded knowingly. <break time="1s"> It’s the early signs of <emphasis level="strong"> typothermia. </emphasis>`,
-    `Don’t knock the weather. <break time="1s"> If it didn’t change once in a while, nine tenths of the people <emphasis> couldn’t start a conversation.</emphasis>`
-]
+const Alexa = require('ask-sdk');
 
-let welcomeMessage = 'You may ask the weather gods about the weather in your city or for a weather forecast';
-
-const handlers = {
-    'LaunchRequest': function() {
-        this.emit(':ask', welcomeMessage);
+const LaunchRequestHandler = {
+    canHandle(handlerInput) {
+        return handlerInput.requestEnvelope.request.type === 'LaunchRequest';
     },
+    handle(handlerInput) {
+        const speechText = 'You may ask the weather gods about the weather in your city or for a weather forecast';
 
-    'getWeather': async function() {
-        console.log('this.event', this.event);
-        const { slots } = this.event.request.intent;
+        return handlerInput.responseBuilder
+            .speak(speechText)
+            .reprompt(speechText)
+            .getResponse();
+    }
+};
+
+const ErrorHandler = {
+    canHandle() {
+        return true;
+    },
+    handle(handlerInput, error) {
+        console.log(`Error handled: ${error.message}`);
+
+        return handlerInput.responseBuilder
+            .speak(`Sorry, I can't understand the command. Please say again.`)
+            .getResponse();
+    },
+};
+
+let jokes = [
+    `Where do snowmen keep their money? <break time="2s" /> In a <emphasis> snow bank </emphasis>`,
+    `As we waited for a bus in the frosty weather, the woman next to me mentioned that she makes a lot of mistakes when texting in the cold. I nodded knowingly. <break time="1s" /> It’s the early signs of <emphasis> typothermia </emphasis>`,
+    `Don’t knock the weather. <break time="1s" /> If it didn’t change once in a while, nine tenths of the people <emphasis> couldn’t start a conversation</emphasis>`
+];
+
+const JokeHandler = {
+    canHandle(handlerInput) {
+        return handlerInput.requestEnvelope.request.type === 'IntentRequest' &&
+            handlerInput.requestEnvelope.request.intent.name === 'tellAJoke';
+    },
+    async handle(handlerInput) {
+        let random = Math.floor(Math.random() * 3);
+        let joke = jokes[random];
+        return handlerInput.responseBuilder
+            .speak(joke)
+            .withShouldEndSession(false)
+            .getResponse();
+    }
+};
+
+const GetWeatherHandler = {
+    canHandle(handlerInput) {
+        return handlerInput.requestEnvelope.request.type === 'IntentRequest' &&
+            handlerInput.requestEnvelope.request.intent.name === 'getWeather';
+    },
+    async handle(handlerInput) {
+        console.log('start get weather');
+        const { slots } = handlerInput.requestEnvelope.request.intent;
         let { location, date } = slots;
-        location = location.value || this.attributes.location || null;
-        date = date.value || this.attributes.date || null;
+        let sessionAttributes = handlerInput.attributesManager.getSessionAttributes();
+        console.log('sessionAttributes', sessionAttributes);
+        location = location.value || sessionAttributes.location || null;
+        date = date.value || sessionAttributes.date || null;
+        sessionAttributes = { location, date };
 
         if (!location) {
+            console.log('get location');
             let slotToElicit = 'location';
             let speechOutput = 'Where do you want to know the weather for?';
-            return this.emit(':elicitSlot', slotToElicit, speechOutput);
+            return handlerInput.responseBuilder
+                .speak(speechOutput)
+                .addElicitSlotDirective(slotToElicit)
+                .getResponse();
         }
         if (!date) {
-            date = Date.now();
+            date = Date.now()
         }
 
         let isToday = moment(date).isSame(Date.now(), 'day');
@@ -35,25 +83,29 @@ const handlers = {
         try {
             if (isToday) {
                 console.log('isToday');
-                let [e, response] = await axios.get(`https://api.openweathermap.org/data/2.5/weather?q=${location},us&appid=${process.env.API_KEY}`);
-                if (e) {
-                    this.emit(':tell', `We couldn't get the weather for ${location} but you can try again later`)
-                    return;
-                }
+                let [error, response] = await to(axios.get(`https://api.openweathermap.org/data/2.5/weather?q=${location},us&appid=${process.env.API_KEY}`));
                 let { data: weatherResponse } = response;
+                if (error) {
+                    console.log('error getting weather', error.response);
+                    let errorSpeech = `We couldn't get the weather for ${location} but you can try again later`;
+                    return handlerInput.responseBuilder
+                        .speak(errorSpeech)
+                        .getResponse();
+                }
                 let { weather, main: { temp, humidity } } = weatherResponse;
+                console.log('got weather response', weatherResponse);
                 let weatherString = formatWeatherString(weather);
                 let formattedTemp = tempC(temp);
                 // let formattedTemp = tempF(temp);
-                let speech = `The weather in ${location} has ${weatherString} with a temperature of ${formattedTemp} and a humidity of ${humidity} percent`;
-                this.emit(':tell', speech);
+                let speechText = `The weather in ${location} has ${weatherString} with a temperature of ${formattedTemp} and a humidity of ${humidity} percent`;
+                handlerInput.attributesManager.setSessionAttributes(sessionAttributes);
+                return handlerInput.responseBuilder
+                    .speak(speechText)
+                    .withShouldEndSession(false)
+                    .getResponse();
             } else {
                 let { data: forecastResponse } = await axios.get(`https://api.openweathermap.org/data/2.5/forecast?q=${location},us&appid=${process.env.API_KEY}`);
                 let { list } = forecastResponse;
-
-                this.attributes.location = location;
-                this.attributes.date = date;
-
                 // reduce the data we keep
                 let usefulForecast = list.map(weatherPeriod => {
                     let { dt_txt, weather, main: { temp, humidity } } = weatherPeriod;
@@ -64,6 +116,7 @@ const handlers = {
                     let time = weatherPeriod.dt_txt.slice(-8);
                     return time === '09:00:00' || time === '18:00:00';
                 });
+                console.log('got forecaset and reduced it ', reducedForecast);
                 // reduce to the day the user asked about 
                 let dayForecast = reducedForecast.filter(forecast => {
                     return moment(date).isSame(forecast.dt_txt, 'day');
@@ -72,24 +125,23 @@ const handlers = {
                 let weatherString = dayForecast.map(forecast => formatWeatherString(forecast.weather));
                 let formattedTemp = dayForecast.map(forecast => tempC(forecast.temp));
                 let humidity = dayForecast.map(forecast => forecast.humidity);
-                let speech = `The weather in ${location} ${date} will have ${weatherString[0]} with a temperature of ${formattedTemp[0]} and a humidity of ${humidity[0]} percent, whilst in the afternoon it will have ${weatherString[1]} with a temperature of ${formattedTemp[1]} and a humidity of ${humidity[1]} percent`;
-                this.emit(':tell', speech);
+                let speechText = `The weather in ${location} ${date} will have ${weatherString[0]} with a temperature of ${formattedTemp[0]} and a humidity of ${humidity[0]} percent, whilst in the afternoon it will have ${weatherString[1]} with a temperature of ${formattedTemp[1]} and a humidity of ${humidity[1]} percent`;
+                handlerInput.attributesManager.setSessionAttributes(sessionAttributes);
+                return handlerInput.responseBuilder
+                    .speak(speechText)
+                    .withShouldEndSession(false)
+                    .getResponse();
             }
         } catch (err) {
-            console.log('err', err);
-            let speech = `My powers are weak and I couldn't get the weather right now.`;
-            this.emit(':tell', speech);
+            console.log('err', err)
+            return handlerInput.responseBuilder
+                .speak(`My powers are weak and I couldn't get the weather right now.`)
+                .getResponse();
         }
-
-    },
-
-    'tellAJoke': function() {
-        let randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
-        this.emit(':tell', randomJoke);
     }
-};
+}
 
-const to = prom => prom.then(res => [null, res]).catch(err => [err, null]);
+const to = promise => promise.then(res => [null, res]).catch(err => [err, null]);
 
 const tempC = temp => Math.floor(temp - 273.15) + ' degrees Celsius ';
 
@@ -100,9 +152,12 @@ const formatWeatherString = weather => {
     return weather.slice(0, -1).map(item => item.description).join(', ') + ' and ' + weather.slice(-1)[0].description;
 };
 
-exports.handler = function(event, context, callback) {
-    const alexa = Alexa.handler(event, context, callback);
-    alexa.appId = 'amzn1.ask.skill.c00e1979-7720-4843-9098-3dda9c63618d';
-    alexa.registerHandlers(handlers);
-    alexa.execute();
-};
+
+exports.handler = Alexa.SkillBuilders.custom()
+    .addRequestHandlers(
+        LaunchRequestHandler,
+        GetWeatherHandler,
+        JokeHandler
+    )
+    .addErrorHandlers(ErrorHandler)
+    .lambda();
