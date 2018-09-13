@@ -57,26 +57,25 @@ const getItem = async slots => {
     console.log('slots', slots);
     let { itemNumber, type, size, colour, length } = slots;
     let stock = await getStock();
-    let matching = stock.filter(item =>
+    let matching = stock.find(item =>
         itemNumber === item.itemNumber ||
         type == item.type &&
         size == item.size &&
         colour == item.colour &&
         (item.length == length || item.type != 'trousers'));
-    if (matching.length !== 1) {
+    if (!matching) {
         let message = `Unfortunately we couldn't find the item you were looking for`;
         return Lex.close({ message })
     }
-    let item = matching[0];
-    if (item.stock < 1) {
+    if (matching.stock < 1) {
         let message = `Unfortunately we don't have anything matching your request in stock. Would you like to search again?`;
         let intentName = 'productFind';
         slots = { type: null, size: null, colour: null, length: null, itemNumber: null };
         return Lex.confirmIntent({ intentName, slots, message })
     }
-    let message = `There are ${item.stock} ${item.colour} ${units(item.type, item.stock)} in stock. Would you like to add one to your basket?`;
+    let message = `There are ${matching.stock} ${matching.colour} ${units(matching.type, matching.stock)} in stock. Would you like to add one to your basket?`;
     let intentName = 'addToCart';
-    slots = { itemNumber: item.itemNumber };
+    slots = { itemNumber: matching.itemNumber };
     return Lex.confirmIntent({ intentName, slots, message });
 }
 

@@ -2,6 +2,7 @@ const lex = require('./LexResponses');
 const Lex = new lex();
 const db = require('./DB');
 const DB = new db();
+const uuidv4 = require('uuid/v4');
 
 exports.handler = async (event) => {
     if (event.currentIntent && event.currentIntent.confirmationStatus === "Denied") {
@@ -27,7 +28,7 @@ const handleAddToCart = async event => {
 
     let [err, cartUser] = await to(DB.get("ID", event.userId, 'shopping-cart'));
     if (!cartUser) {
-        cartUser = { ID: event.userId, Items: [], name: Math.random().toString(), TTL: 0 };
+        cartUser = { ID: event.userId, Items: [], name: uuidv4(), TTL: 0 };
     }
     let updatedCart = { ...cartUser, ID: Math.random().toString(), userID: event.userId, Items: [...cartUser.Items, itemNumber], TTL: Date.now() + 7 * 24 * 60 * 60 * 1000 };
     let [writeErr, res] = await to(DB.write(event.userId, updatedCart, 'shopping-cart'));
