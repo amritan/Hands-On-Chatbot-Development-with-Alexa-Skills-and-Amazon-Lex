@@ -19,11 +19,12 @@ const handleGetSavedCart = async event => {
         return Lex.elicitSlot({ intentName, slots, slotToElicit, message });
     }
 
-    let [err, cart] = await to(DB.get('name', cartName, 'shopping-cart'));
-    if (err || !cart) {
+    let [err, carts] = await to(DB.getDifferent('cartName', cartName, 'shopping-cart'));
+    if (err || !carts || !carts[0]) {
         let message = `We couldn't find a cart with that name. Would you like to try another name or start a new cart?`;
         return Lex.elicitIntent({ message });
     }
+    let cart = carts[0];
 
     let oldCartID = cart.ID;
     let newCart = { ...cart, ID: userId, TTL: Date.now() + 7 * 24 * 60 * 60 * 1000 };

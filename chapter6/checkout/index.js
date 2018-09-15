@@ -2,6 +2,7 @@ const lex = require('./LexResponses');
 const Lex = new lex();
 const db = require('./DB');
 const DB = new db();
+const uuidv4 = require('uuid/v4');
 
 exports.handler = async (event) => {
     if (event.currentIntent && event.currentIntent.confirmationStatus === "Denied") {
@@ -33,10 +34,10 @@ const handleCheckout = async event => {
     }
 
     let order = { Items: cart.Items, address: deliveryAddress, date: Date.now() };
-    let ID = Math.random().toString();
+    let ID = uuidv4();
     try {
-        await to(DB.delete(event.userId, 'shopping-cart'))
         await to(DB.write(ID, order, 'shopping-orders'));
+        await to(DB.delete(event.userId, 'shopping-cart'));
     } catch (err) {
         console.log('error deleting the cart or writing the order.', cartErr);
         let message = `I'm sorry, there was a system error so your order hasn't been placed.`;

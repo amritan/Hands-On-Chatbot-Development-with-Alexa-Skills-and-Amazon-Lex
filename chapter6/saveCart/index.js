@@ -8,26 +8,30 @@ exports.handler = async (event) => {
 }
 
 const handleSaveCart = async event => {
-    let { currentIntent: { slots } } = event;
+    let { slots } = event.currentIntent;
     let { cartName } = slots;
 
     if (!cartName) {
         let message = `You need to save your cart with a name. What do you want to call it?`;
         let intentName = 'saveCart';
         slots = { cartName: null };
-        return Lex.confirmIntent({ intentName, slots, message });
+        let slotToElicit = 'cartName';
+        return Lex.elicitSlot({ intentName, slotToElicit, slots, message });
     }
 
     let [err, cart] = await to(DB.get('ID', event.userId, 'shopping-cart'));
     if (err || !cart || !cart.Items) {
-        let message = `You don't have a cart. Would you like to find a product to add to your?`;
+        let message = `You don't have a cart. Would you like to find a product?`;
         let intentName = 'productFind';
         slots = { type: null, size: null, colour: null, length: null, itemNumber: null };
         return Lex.confirmIntent({ intentName, slots, message });
     }
 
     let [getCartErr, getCart] = await to(DB.get('name', cartName, 'shopping-cart'));
-    if (!getCart) return addNameToCart(cart);
+    if (!getCart) {
+        // No cart with that name so we can save the current cart to this name
+        return addNameToCart(cart, cartName);
+    }
     let message = `Unfortunately you can't use that name. Please choose another name.`;
     let intentName = 'saveCart';
     let slotToElicit = 'cartName';
